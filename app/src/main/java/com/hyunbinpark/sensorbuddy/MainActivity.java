@@ -1,13 +1,18 @@
 package com.hyunbinpark.sensorbuddy;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.SystemClock;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -18,9 +23,14 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import au.com.bytecode.opencsv.CSVWriter;
+
+import java.io.File;
 import java.io.FileWriter;
 
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
@@ -39,6 +49,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private Sensor mMag;
     private Sensor mLight;
 
+    private long mStartTime;
+
+    private File mFile;
+    private CSVWriter mCSVWriter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,14 +75,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mStartButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                registerSensors();
+                beginCollection();
             }
         });
         mStopButton = (Button) findViewById(R.id.stop_button);
         mStopButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                unregisterSensors();
+                stopCollection();
             }
         });
 
@@ -86,15 +100,60 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mLight = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
     }
 
-    private void registerSensors(){
-        mSensorManager.registerListener(this, mAccel, SensorManager.SENSOR_DELAY_FASTEST);
-        mSensorManager.registerListener(this, mGyro, SensorManager.SENSOR_DELAY_FASTEST);
-        mSensorManager.registerListener(this, mMag, SensorManager.SENSOR_DELAY_FASTEST);
-        mSensorManager.registerListener(this, mLight, SensorManager.SENSOR_DELAY_FASTEST);
+    private void beginCollection(){
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            // Request write permissions because it hasn't been granted yet
+            ActivityCompat.requestPermissions(
+                    this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
+        } else{
+            // Set start time of data collection
+            mStartTime = SystemClock.uptimeMillis();
+
+            // Initialize file IO because permissions have been granted
+            String fileName = Calendar.getInstance().getTime().toString();
+            if(isExternalStorageWritable()){
+                mFile = new File(Environment.getExternalStorageDirectory(), fileName + ".csv");
+                // mFile.mkdirs();
+                initializeCsvReader();
+            }
+            // Start sensor data listening
+            mSensorManager.registerListener(this, mAccel, SensorManager.SENSOR_DELAY_FASTEST);
+            mSensorManager.registerListener(this, mGyro, SensorManager.SENSOR_DELAY_FASTEST);
+            mSensorManager.registerListener(this, mMag, SensorManager.SENSOR_DELAY_FASTEST);
+            mSensorManager.registerListener(this, mLight, SensorManager.SENSOR_DELAY_FASTEST);
+        }
     }
 
-    private void unregisterSensors(){
+    public boolean isExternalStorageWritable() {
+        String state = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(state)) {
+            return true;
+        }
+        return false;
+    }
+
+    private void initializeCsvReader(){
+        try {
+            mCSVWriter = new CSVWriter(new FileWriter(mFile));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        String [] columnNames = "Time#Accel_x#Accel_y#Accel_z#Gyro_x#Gyro_y#Gyro_z#Mag_x#Mag_y#Mag_z#Light".split("#");
+        mCSVWriter.writeNext(columnNames);
+    }
+
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        beginCollection(); // This is a hacky way to always grant file IO access, can't ever deny
+    }
+
+    private void stopCollection() {
         mSensorManager.unregisterListener(this);
+        try {
+            mCSVWriter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -103,47 +162,59 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     public void onSensorChanged(SensorEvent event){
+        long curTime = TimeUnit.NANOSECONDS.toMillis(event.timestamp) - mStartTime;
         if(event.sensor == mAccel){
             mAccelText.setText(Arrays.toString(event.values));
+            writeAccel(curTime, event.values);
         } else if(event.sensor == mGyro){
             mGyroText.setText(Arrays.toString(event.values));
+            writeGyro(curTime, event.values);
         } else if(event.sensor == mMag) {
             mMagText.setText(Arrays.toString(event.values));
+            writeMag(curTime, event.values);
         } else if(event.sensor == mLight){
             mLightText.setText(Arrays.toString(event.values));
+            writeLight(curTime, event.values);
         }
-    }
-
-    public void writetoCSV(String sensor, float x, float y, float z, float lightSensor) throws Exception {
-
-        String csv = "output.csv";
-        CSVWriter writer = new CSVWriter(new FileWriter(csv));
-
-        String [] country = "India#China#United States".split("#");
-
-        switch (sensor) {
-            case "a":
-                
-                break;
-            case "g":
-
-                break;
-            case "m":
-
-                break;
-            default:
-                break;
-        }
-
-
-        writer.writeNext(country);
-
-        writer.close();
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
         Log.d(TAG, "Accuracy changed: " + sensor.getName() + " , " + i);
+    }
+
+    private void writeAccel(long time, float[] value){
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[1] = Float.toString(value[0]);
+        array[2] = Float.toString(value[1]);
+        array[3] = Float.toString(value[2]);
+        mCSVWriter.writeNext(array);
+    }
+
+    private void writeGyro(long time, float[] value){
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[4] = Float.toString(value[0]);
+        array[5] = Float.toString(value[1]);
+        array[6] = Float.toString(value[2]);
+        mCSVWriter.writeNext(array);
+    }
+
+    private void writeMag(long time, float[] value){
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[7] = Float.toString(value[0]);
+        array[8] = Float.toString(value[1]);
+        array[9] = Float.toString(value[2]);
+        mCSVWriter.writeNext(array);
+    }
+
+    private void writeLight(long time, float[] value){
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[10] = Float.toString(value[0]);
+        mCSVWriter.writeNext(array);
     }
 
     @Override
