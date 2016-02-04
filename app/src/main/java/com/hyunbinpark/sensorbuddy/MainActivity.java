@@ -17,6 +17,9 @@ import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.TextView;
 
+import au.com.bytecode.opencsv.CSVWriter;
+import java.io.FileWriter;
+
 import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
@@ -109,6 +112,33 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } else if(event.sensor == mLight){
             mLightText.setText(Arrays.toString(event.values));
         }
+    }
+
+    public void writetoCSV(String sensor, float x, float y, float z, float lightSensor) throws Exception {
+
+        String csv = "output.csv";
+        CSVWriter writer = new CSVWriter(new FileWriter(csv));
+
+        String [] country = "India#China#United States".split("#");
+
+        switch (sensor) {
+            case "a":
+                
+                break;
+            case "g":
+
+                break;
+            case "m":
+
+                break;
+            default:
+                break;
+        }
+
+
+        writer.writeNext(country);
+
+        writer.close();
     }
 
     @Override
