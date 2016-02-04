@@ -27,14 +27,62 @@
         android:text="Stop"/>
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Accelerometer"/>
-
-    <TextView
         android:id="@+id/accel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_below="@+id/start_button"
+        android:text="Acc:  "/>
+
+    <TextView
+        android:id="@+id/accel_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/start_button"
+        android:layout_toRightOf="@+id/accel"
         android:text="accel"/>
 
+    <TextView
+        android:id="@+id/gyro"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/accel_text"
+        android:text="Gyr:  "/>
+
+    <TextView
+        android:id="@+id/gyro_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/accel_text"
+        android:layout_toRightOf="@+id/gyro"
+        android:text="gyro"/>
+
+    <TextView
+        android:id="@+id/mag"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/gyro_text"
+        android:text="Mag:  "/>
+
+    <TextView
+        android:id="@+id/mag_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/gyro_text"
+        android:layout_toRightOf="@+id/mag"
+        android:text="mag"/>
+
+    <TextView
+        android:id="@+id/light"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/mag"
+        android:text="Lig:  "/>
+
+    <TextView
+        android:id="@+id/light_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/mag"
+        android:layout_toRightOf="@+id/light"
+        android:text="Light"/>
 </RelativeLayout>

@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Button;
+import android.widget.TextView;
 
 import java.util.Arrays;
 
@@ -24,12 +25,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private Button mStartButton;
     private Button mStopButton;
+    private TextView mAccelText;
+    private TextView mGyroText;
+    private TextView mMagText;
+    private TextView mLightText;
 
     private SensorManager mSensorManager;
     private Sensor mAccel;
     private Sensor mGyro;
     private Sensor mMag;
     private Sensor mLight;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,13 +69,25 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         });
 
+        // Text logic
+        mAccelText = (TextView) findViewById(R.id.accel_text);
+        mGyroText = (TextView) findViewById(R.id.gyro_text);
+        mMagText = (TextView) findViewById(R.id.mag_text);
+        mLightText = (TextView) findViewById(R.id.light_text);
+
         // Initialize sensor-related objects
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mAccel = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        mMag = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mLight = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
     }
 
     private void registerSensors(){
         mSensorManager.registerListener(this, mAccel, SensorManager.SENSOR_DELAY_FASTEST);
+        mSensorManager.registerListener(this, mGyro, SensorManager.SENSOR_DELAY_FASTEST);
+        mSensorManager.registerListener(this, mMag, SensorManager.SENSOR_DELAY_FASTEST);
+        mSensorManager.registerListener(this, mLight, SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     private void unregisterSensors(){
@@ -83,7 +101,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     public void onSensorChanged(SensorEvent event){
         if(event.sensor == mAccel){
-            Log.d(TAG, Arrays.toString(event.values));
+            mAccelText.setText(Arrays.toString(event.values));
+        } else if(event.sensor == mGyro){
+            mGyroText.setText(Arrays.toString(event.values));
+        } else if(event.sensor == mMag) {
+            mMagText.setText(Arrays.toString(event.values));
+        } else if(event.sensor == mLight){
+            mLightText.setText(Arrays.toString(event.values));
         }
     }
 
