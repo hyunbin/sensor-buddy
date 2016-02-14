@@ -66,7 +66,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private float[] smoothedData = new float[3];
     private float[] previousData = new float[3];
-    private float ALPHA = 0.05f;
+    private float ALPHA = 0.04f;
     private int mZeroCrossing = 0;
 
     @Override
