@@ -22,12 +22,15 @@ import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.TextView;
 
+import org.jtransforms.fft.FloatFFT_1D;
+
 import au.com.bytecode.opencsv.CSVWriter;
 
 import java.io.File;
 import java.io.FileWriter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +45,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private TextView mGyroText;
     private TextView mMagText;
     private TextView mLightText;
+    private TextView mStepText;
 
     private SensorManager mSensorManager;
     private Sensor mAccel;
@@ -52,7 +56,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private long mStartTime;
 
     private File mFile;
-    private CSVWriter mCSVWriter;
+    private File mFileFft;
+    private CSVWriter mCsvWriter;
+    private CSVWriter mCsvWriterFft;
+
+    private ArrayList<Float> mAccelYData;
+    private ArrayList<Long> mAccelTimeData;
+    private boolean mFirstTimeWriting = true;
+
+    private float[] smoothedData = new float[3];
+    private float[] previousData = new float[3];
+    private float ALPHA = 0.05f;
+    private int mZeroCrossing = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,6 +106,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mGyroText = (TextView) findViewById(R.id.gyro_text);
         mMagText = (TextView) findViewById(R.id.mag_text);
         mLightText = (TextView) findViewById(R.id.light_text);
+        mStepText = (TextView) findViewById(R.id.step_text);
 
         // Initialize sensor-related objects
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -98,6 +114,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         mMag = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         mLight = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+
+        mAccelYData = new ArrayList<>();
+        mAccelTimeData = new ArrayList<>();
     }
 
     private void beginCollection(){
@@ -114,6 +133,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             String fileName = Calendar.getInstance().getTime().toString();
             if(isExternalStorageWritable()){
                 mFile = new File(Environment.getExternalStorageDirectory(), fileName + ".csv");
+                mFileFft = new File(Environment.getExternalStorageDirectory(), fileName + "_Fft_Analysis.csv");
+                Log.d(TAG, mFile.toString());
                 // mFile.mkdirs();
                 initializeCsvReader();
             }
@@ -135,12 +156,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void initializeCsvReader(){
         try {
-            mCSVWriter = new CSVWriter(new FileWriter(mFile));
+            mCsvWriter = new CSVWriter(new FileWriter(mFile));
+            mCsvWriterFft = new CSVWriter(new FileWriter(mFileFft));
         } catch (IOException e) {
             e.printStackTrace();
         }
         String [] columnNames = "Time#Accel_x#Accel_y#Accel_z#Gyro_x#Gyro_y#Gyro_z#Mag_x#Mag_y#Mag_z#Light".split("#");
-        mCSVWriter.writeNext(columnNames);
+        mCsvWriter.writeNext(columnNames);
+        //mCsvWriterFft.writeNext("Time#Accel_y".split("#"));
+        mCsvWriterFft.writeNext("Time#Accel_x#Accel_y#Accel_z".split("#"));
     }
 
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -149,11 +173,46 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void stopCollection() {
         mSensorManager.unregisterListener(this);
+
+        /*
+        float[] accelYData = new float[mAccelYData.size()];
+        for(int i = 0; i < mAccelYData.size(); i++) {
+            accelYData[i] = mAccelYData.get(i);
+        }
+
+        FloatFFT_1D fftManager = new FloatFFT_1D(accelYData.length);
+        fftManager.realForward(accelYData);
+
+        for(int i = 0; i < mAccelYData.size(); i++) {
+            writeFft(mAccelTimeData.get(i), accelYData[i]);
+        }
+        */
+
+        mFirstTimeWriting = true;
+        mZeroCrossing = 0;
+        mStepText.setText("" + mZeroCrossing / 2);
+
         try {
-            mCSVWriter.close();
+            mCsvWriter.close();
+            mCsvWriterFft.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private float[] lowPass(float[] input, float[] output) {
+        if (output == null) return input;
+        for ( int i=0; i<input.length; i++ ) {
+            output[i] = output[i] + ALPHA * (input[i] - output[i]);
+        }
+        return output;
+    }
+
+    private void writeFft(long time, float value){
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[1] = Float.toString(value);
+        mCsvWriterFft.writeNext(array);
     }
 
     @Override
@@ -162,10 +221,25 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     public void onSensorChanged(SensorEvent event){
-        long curTime = TimeUnit.NANOSECONDS.toMillis(event.timestamp) - mStartTime;
-        if(event.sensor == mAccel){
+        long curTime;
+        if(mFirstTimeWriting) {
+            mStartTime = TimeUnit.NANOSECONDS.toMillis(event.timestamp);
+            curTime = 0;
+            mFirstTimeWriting = false;
+        }
+        else{
+            curTime = TimeUnit.NANOSECONDS.toMillis(event.timestamp) - mStartTime;
+        }
+        if (event.sensor == mAccel) {
             mAccelText.setText(Arrays.toString(event.values));
+            mAccelYData.add(event.values[1]);
+            mAccelTimeData.add(curTime);
             writeAccel(curTime, event.values);
+            previousData = smoothedData.clone();
+            smoothedData = lowPass(event.values.clone(), smoothedData);
+            checkZeroCrossing(previousData[2] - 9.81f, smoothedData[2] - 9.81f); // TODO
+            writeSmoothedAccel(curTime, smoothedData);
+            mStepText.setText("" + mZeroCrossing / 2);
         } else if(event.sensor == mGyro){
             mGyroText.setText(Arrays.toString(event.values));
             writeGyro(curTime, event.values);
@@ -175,6 +249,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } else if(event.sensor == mLight){
             mLightText.setText(Arrays.toString(event.values));
             writeLight(curTime, event.values);
+        }
+    }
+
+    private void checkZeroCrossing(float previousData, float currentData){
+        if((previousData > 0 && currentData < 0) || (previousData < 0 && currentData > 0)){
+            mZeroCrossing++;
         }
     }
 
@@ -189,7 +269,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         array[1] = Float.toString(value[0]);
         array[2] = Float.toString(value[1]);
         array[3] = Float.toString(value[2]);
-        mCSVWriter.writeNext(array);
+        mCsvWriter.writeNext(array);
+    }
+
+    private void writeSmoothedAccel(long time, float[] value) {
+        String[] array = new String[11];
+        array[0] = Long.toString(time);
+        array[1] = Float.toString(value[0]);
+        array[2] = Float.toString(value[1]);
+        array[3] = Float.toString(value[2]);
+        mCsvWriterFft.writeNext(array);
     }
 
     private void writeGyro(long time, float[] value){
@@ -198,7 +287,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         array[4] = Float.toString(value[0]);
         array[5] = Float.toString(value[1]);
         array[6] = Float.toString(value[2]);
-        mCSVWriter.writeNext(array);
+        mCsvWriter.writeNext(array);
     }
 
     private void writeMag(long time, float[] value){
@@ -207,14 +296,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         array[7] = Float.toString(value[0]);
         array[8] = Float.toString(value[1]);
         array[9] = Float.toString(value[2]);
-        mCSVWriter.writeNext(array);
+        mCsvWriter.writeNext(array);
     }
 
     private void writeLight(long time, float[] value){
         String[] array = new String[11];
         array[0] = Long.toString(time);
         array[10] = Float.toString(value[0]);
-        mCSVWriter.writeNext(array);
+        mCsvWriter.writeNext(array);
     }
 
     @Override
