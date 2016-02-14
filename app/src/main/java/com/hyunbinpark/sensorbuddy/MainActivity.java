@@ -139,6 +139,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 // mFile.mkdirs();
                 initializeCsvReader();
             }
+            mZeroCrossing = 0; // set step counting to 0
             // Start sensor data listening
             mSensorManager.registerListener(this, mAccel, SensorManager.SENSOR_DELAY_FASTEST);
             mSensorManager.registerListener(this, mGyro, SensorManager.SENSOR_DELAY_FASTEST);
@@ -190,7 +191,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         */
 
         mFirstTimeWriting = true;
-        mZeroCrossing = 0;
         mStepText.setText("" + mZeroCrossing / 2);
 
         try {
