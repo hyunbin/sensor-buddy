@@ -66,8 +66,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private float[] smoothedData = new float[3];
     private float[] previousData = new float[3];
-    private float ALPHA = 0.04f;
+    private float ALPHA = 0.038f; // 0.04f
     private int mZeroCrossing = 0;
+    private float mGravityCompensation = 9.82f; // 9.81f
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -237,7 +238,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             writeAccel(curTime, event.values);
             previousData = smoothedData.clone();
             smoothedData = lowPass(event.values.clone(), smoothedData);
-            checkZeroCrossing(previousData[2] - 9.81f, smoothedData[2] - 9.81f); // TODO
+            checkZeroCrossing(previousData[2] - mGravityCompensation, smoothedData[2] - mGravityCompensation); // TODO
             writeSmoothedAccel(curTime, smoothedData);
             mStepText.setText("" + mZeroCrossing / 2);
         } else if(event.sensor == mGyro){
