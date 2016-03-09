@@ -27,11 +27,11 @@
         android:text="Stop"/>
 
     <Button
-        android:id="@+id/rotate_button"
+        android:id="@+id/adjust_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_toRightOf="@+id/stop_button"
-        android:text="Button"/>
+        android:text="Adjust"/>
 
     <TextView
         android:id="@+id/accel"
@@ -137,4 +137,5 @@
         android:layout_toRightOf="@+id/rotation"
         android:layout_below="@+id/distance"
         android:text="0 degrees"/>
+
 </RelativeLayout>

@@ -8,7 +8,6 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
-import android.os.Debug;
 import android.os.Environment;
 import android.os.SystemClock;
 import android.support.design.widget.FloatingActionButton;
@@ -37,14 +36,13 @@ import java.util.concurrent.TimeUnit;
 import static java.lang.Math.abs;
 import static java.lang.Math.toDegrees;
 
-
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private static String TAG = MainActivity.class.getSimpleName();
 
     private Button mStartButton;
     private Button mStopButton;
-    private Button mYoloButton;
+    private Button mAdjustButton;
     private TextView mAccelText;
     private TextView mGyroText;
     private TextView mMagText;
@@ -58,6 +56,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private Sensor mGyro;
     private Sensor mMag;
     private Sensor mLight;
+    private Sensor mRotation;
 
     private long mStartTime;
 
@@ -70,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private float[] smoothedData = new float[3];
     private float[] previousData = new float[3];
-    private float ALPHA = 0.038f; // 0.04f
+    private float LOWPASS_ALPHA = 0.038f; // 0.04f
     private int mZeroCrossing = 0;
     private float mGravityCompensation = 9.82f; // 9.81f
 
@@ -79,9 +78,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private double mTotalRotation = 0;
     private double mMaxVal;
-    private boolean mMoving = true;
 
     private double mStride = 0.415 * 1.75; // in meters
+    private double mMaxValThreshold = 0.04;
+
+    private double mSignedGyroIntegration = 0;
+    private double mUnsignedGyroIntegration = 0;
+    private int mCountGyroIntegration = 0;
+    private double mSignedGyroIntegrationThreshold = 3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,11 +118,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 stopCollection();
             }
         });
-        mYoloButton = (Button) findViewById(R.id.rotate_button);
-        mYoloButton.setOnClickListener(new View.OnClickListener() {
+        mAdjustButton = (Button) findViewById(R.id.adjust_button);
+        mAdjustButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                mMoving = !mMoving;
+                // TODO create AlertDialogue to adjust parameters
+                // TODO includes: mStride, LOWPASS_ALPHA, mZeroCrossing, mMaxValThreshold, mSignedGyroIntegrationThreshold
+
             }
         });
 
@@ -137,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         mMag = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         mLight = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+        mRotation = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
 
         mAccelYData = new ArrayList<>();
         mAccelTimeData = new ArrayList<>();
@@ -167,6 +174,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mSensorManager.registerListener(this, mGyro, SensorManager.SENSOR_DELAY_FASTEST);
             mSensorManager.registerListener(this, mMag, SensorManager.SENSOR_DELAY_FASTEST);
             mSensorManager.registerListener(this, mLight, SensorManager.SENSOR_DELAY_FASTEST);
+            mSensorManager.registerListener(this, mRotation, SensorManager.SENSOR_DELAY_FASTEST);
         }
     }
 
@@ -184,7 +192,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } catch (IOException e) {
             e.printStackTrace();
         }
-        String [] columnNames = "Time#Accel_x#Accel_y#Accel_z#Gyro_x#Gyro_y#Gyro_z#Mag_x#Mag_y#Mag_z#Light".split("#");
+        String [] columnNames = "Time#Accel_x#Accel_y#Accel_z#Gyro_x#Gyro_y#Gyro_z#Mag_x#Mag_y#Mag_z#Light#Compass".split("#");
         mCsvWriter.writeNext(columnNames);
     }
 
@@ -206,7 +214,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private float[] lowPass(float[] input, float[] output) {
         if (output == null) return input;
         for ( int i=0; i<input.length; i++ ) {
-            output[i] = output[i] + ALPHA * (input[i] - output[i]);
+            output[i] = output[i] + LOWPASS_ALPHA * (input[i] - output[i]);
         }
         if(output[2] - mGravityCompensation > mMaxVal)
             mMaxVal = output[2] - mGravityCompensation;
@@ -260,23 +268,38 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } else if(event.sensor == mLight){
             mLightText.setText(Arrays.toString(event.values));
             writeLight(curTime, event.values);
+        } else if(event.sensor == mRotation){
+            float orientation[] = new float[3];
+            float rMat[] = new float[9];
+            SensorManager.getRotationMatrixFromVector(rMat, event.values);
+            SensorManager.getOrientation(rMat, orientation);
+            writeCompass(curTime, orientation[0]);
         }
     }
 
     private void calculateIntegration(SensorEvent event) {
         // This timestep's delta rotation to be multiplied by the current rotation
         // after computing it from the gyro sample data.
-        if(mMoving){
-            timestamp = event.timestamp;
-            return;
-        }
         if(timestamp != 0) {
             final float dT = (event.timestamp - timestamp) * NS2S;
             // Axis of the rotation sample
-            float axisZ = abs(event.values[2]);
+            float axisZ = event.values[2];
             double axisZDeg = toDegrees(axisZ);
-            if(axisZDeg > 2) {
-                mTotalRotation += axisZDeg * dT;
+            mSignedGyroIntegration += axisZDeg * dT;
+            mUnsignedGyroIntegration += abs(axisZDeg) * dT;
+            mCountGyroIntegration++;
+            if(mCountGyroIntegration % 10 == 0) {
+                // Every ten samples, see if gyro samples are worth adding
+                if(abs(mSignedGyroIntegration) > mSignedGyroIntegrationThreshold) {
+                    mTotalRotation += mUnsignedGyroIntegration;
+                    Log.d(TAG, "Count added to total rotation with val: " + mUnsignedGyroIntegration);
+                }
+                else{
+                    Log.d(TAG, "Not significant with val: " + mSignedGyroIntegration);
+                }
+                mCountGyroIntegration = 0;
+                mSignedGyroIntegration = 0;
+                mUnsignedGyroIntegration = 0;
             }
         }
         timestamp = event.timestamp;
@@ -284,7 +307,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void checkZeroCrossing(float previousData, float currentData){
         if((previousData > 0 && currentData < 0) || (previousData < 0 && currentData > 0)){
-            if(mMaxVal > 0.04) { // TODO: Play around with threshold to find better value
+            if(mMaxVal > mMaxValThreshold) { // TODO: Play around with threshold to find better value
                 mZeroCrossing++;
                 if (mZeroCrossing % 2 == 0) {
                     Log.d(TAG, "Maxval for step " + (mZeroCrossing / 2) + ": " + mMaxVal);
@@ -303,7 +326,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void writeAccel(long time, float[] value){
-        String[] array = new String[11];
+        String[] array = new String[12];
         array[0] = Long.toString(time);
         array[1] = Float.toString(value[0]);
         array[2] = Float.toString(value[1]);
@@ -312,7 +335,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void writeGyro(long time, float[] value){
-        String[] array = new String[11];
+        String[] array = new String[12];
         array[0] = Long.toString(time);
         array[4] = Float.toString(value[0]);
         array[5] = Float.toString(value[1]);
@@ -321,7 +344,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void writeMag(long time, float[] value){
-        String[] array = new String[11];
+        String[] array = new String[12];
         array[0] = Long.toString(time);
         array[7] = Float.toString(value[0]);
         array[8] = Float.toString(value[1]);
@@ -330,9 +353,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void writeLight(long time, float[] value){
-        String[] array = new String[11];
+        String[] array = new String[12];
         array[0] = Long.toString(time);
         array[10] = Float.toString(value[0]);
+        mCsvWriter.writeNext(array);
+    }
+
+    private void writeCompass(long time, float value) {
+        String [] array = new String[12];
+        array[0] = Long.toString(time);
+        array[11] = Double.toString((Math.toDegrees(value) + 360) % 360);
         mCsvWriter.writeNext(array);
     }
 
