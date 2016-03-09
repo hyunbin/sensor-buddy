@@ -2,6 +2,7 @@ package com.hyunbinpark.sensorbuddy;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -13,13 +14,16 @@ import android.os.SystemClock;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import au.com.bytecode.opencsv.CSVWriter;
@@ -123,8 +127,33 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             @Override
             public void onClick(View view) {
                 // TODO create AlertDialogue to adjust parameters
-                // TODO includes: mStride, LOWPASS_ALPHA, mZeroCrossing, mMaxValThreshold, mSignedGyroIntegrationThreshold
-
+                // TODO includes: mStride, LOWPASS_ALPHA, mMaxValThreshold, mSignedGyroIntegrationThreshold
+                LayoutInflater inflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+                View updateValView = inflater.inflate(R.layout.dialog_update_vals, null);
+                final EditText strideView = (EditText) updateValView.findViewById(R.id.editText);
+                strideView.setText(Double.toString(mStride));
+                final EditText lowpassAlphaView = (EditText) updateValView.findViewById(R.id.editText2);
+                lowpassAlphaView.setText(Float.toString(LOWPASS_ALPHA));
+                final EditText maxvalView = (EditText) updateValView.findViewById(R.id.editText3);
+                maxvalView.setText(Double.toString(mMaxValThreshold));
+                final EditText signedGyroIntegrationView = (EditText) updateValView.findViewById(R.id.editText4);
+                signedGyroIntegrationView.setText(Double.toString(mSignedGyroIntegrationThreshold));
+                final EditText extraView = (EditText) updateValView.findViewById(R.id.editText5);
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                builder.setTitle("Update rejection thresholds")
+                        .setView(updateValView)
+                        .setPositiveButton("Update", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                // TODO update values here
+                                mStride = Double.valueOf(strideView.getText().toString());
+                                LOWPASS_ALPHA = Float.valueOf(lowpassAlphaView.getText().toString());
+                                mMaxValThreshold = Double.valueOf(maxvalView.getText().toString());
+                                mSignedGyroIntegrationThreshold = Double.valueOf(signedGyroIntegrationView.getText().toString());
+                            }
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
             }
         });
 
